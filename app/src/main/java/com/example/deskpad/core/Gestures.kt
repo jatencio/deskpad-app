@@ -26,6 +26,7 @@ sealed interface GestureAction {
     data object DragStart : GestureAction
     data class DragMove(val dx: Float, val dy: Float) : GestureAction
     data object DragEnd : GestureAction
+    data object ToggleScrollMode : GestureAction
 }
 
 /** Tunable thresholds for gesture recognition. */
@@ -45,8 +46,15 @@ data class GestureConfig(
  *  - 2-finger down→up (little movement) → RightClick
  *  - 2-finger move → Scroll deltas
  *  - a down arriving within doubleTapWindow of a tap, then moving → DragStart/DragMove/DragEnd
+ *  - 3-finger down→up (little movement) → ToggleScrollMode
+ *
+ * In [scrollMode], a 1-finger move emits Scroll instead of Move (the cursor stays put, so a tap
+ * still clicks where it is) and tap-then-slide no longer starts a drag.
  */
 class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
+
+    /** Set by the owner (it decides when to honour a [GestureAction.ToggleScrollMode]). */
+    var scrollMode = false
 
     private var active = false
     private var downX = 0f
@@ -80,7 +88,7 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
             moved = false
             twoFinger = frame.pointerCount >= 2
             dragging = false
-            dragArmed = lastTapUpTime != NO_TAP &&
+            dragArmed = !scrollMode && lastTapUpTime != NO_TAP &&
                 (frame.timeMs - lastTapUpTime) <= config.doubleTapWindowMs
         } else {
             // Additional finger touched down during the gesture.
@@ -108,7 +116,7 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
                 }
                 out += GestureAction.DragMove(dx, dy)
             }
-            moved -> out += GestureAction.Move(dx, dy)
+            moved -> out += if (scrollMode) GestureAction.Scroll(dx, dy) else GestureAction.Move(dx, dy)
         }
     }
 
@@ -120,6 +128,7 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
 
         when {
             dragging -> out += GestureAction.DragEnd
+            maxPointers >= 3 -> if (isTap) out += GestureAction.ToggleScrollMode
             twoFinger || maxPointers >= 2 -> if (isTap) out += GestureAction.RightClick
             isTap -> {
                 out += GestureAction.LeftClick

@@ -34,6 +34,7 @@ class InputPipeline(
                 val p = cursor.positionFor(displayId)
                 sink.button(displayId, p.x, p.y, primary = true, down = false)
             }
+            GestureAction.ToggleScrollMode -> Unit // a recognizer mode, handled by its owner
         }
     }
 

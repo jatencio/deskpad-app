@@ -35,6 +35,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var statusDot: View
     private lateinit var lockButton: Button
+    private lateinit var scrollButton: Button
     private lateinit var lockOverlay: FrameLayout
     private lateinit var keyboardPanel: LinearLayout
     private lateinit var kbStatus: TextView
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
     private var shiftOn = false
     private var page = LETTERS // LETTERS, SYMBOLS, or MORE_SYMBOLS
     private var shiftKey: Button? = null
+    private var lastScrollMode: Boolean? = null
 
     private val service get() = DeskPadA11yService.instance
 
@@ -94,8 +96,16 @@ class MainActivity : Activity() {
         statusDot.setBackgroundColor(if (ready) GOOD else WARN)
         statusText.text = when {
             s.external == null -> "Enabled · connect a display (Desktop mode)"
+            s.scrollMode -> "Scroll mode · 1 finger scrolls · tap clicks"
             else -> "Ready · display ${s.external.id} · ${s.external.width}×${s.external.height}"
         }
+        scrollButton.setTextColor(if (s.scrollMode) ACCENT else MUTED)
+        scrollButton.setBackgroundColor(if (s.scrollMode) SHIFT_ON else Color.TRANSPARENT)
+        // A haptic cue on mode changes, so a three-finger-tap toggle is felt without looking.
+        if (lastScrollMode != null && lastScrollMode != s.scrollMode) {
+            touchpad.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+        }
+        lastScrollMode = s.scrollMode
         lockButton.text = if (s.locked) "🔒" else "🔓"
         lockButton.setTextColor(if (s.locked) WARN else MUTED)
         lockOverlay.visibility = if (s.locked) View.VISIBLE else View.GONE
@@ -369,6 +379,8 @@ class MainActivity : Activity() {
             text = "Starting…"; setTextColor(TEXT); textSize = 12f; typeface = Typeface.MONOSPACE
         }
         bar.addView(statusText, LinearLayout.LayoutParams(0, WRAP, 1f))
+        scrollButton = iconButton("⇕") { service?.let { if (!it.isLocked) it.setScrollMode(!it.isScrollMode) } }
+        bar.addView(scrollButton)
         bar.addView(iconButton("⌨") { toggleKeyboard() })
         lockButton = iconButton("🔓") { service?.setLocked(true) }
         bar.addView(lockButton)
@@ -431,6 +443,7 @@ class MainActivity : Activity() {
         val MUTED = 0xFF7D8894.toInt()
         val WARN = 0xFFD29922.toInt()
         val GOOD = 0xFF3FB950.toInt()
+        val ACCENT = 0xFF58A6FF.toInt()
         val SHIFT_ON = 0xFF2D3B4E.toInt()
     }
 }
