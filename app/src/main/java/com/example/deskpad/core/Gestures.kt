@@ -1,5 +1,6 @@
 package com.example.deskpad.core
 
+import kotlin.math.abs
 import kotlin.math.hypot
 
 /** Normalized touch phase for one frame from the phone's touchpad surface. */
@@ -34,6 +35,8 @@ data class GestureConfig(
     val tapSlopPx: Float = 16f,
     val tapTimeoutMs: Long = 250,
     val doubleTapWindowMs: Long = 300,
+    /** Scroll travel before a scroll gesture commits to the horizontal or vertical axis. */
+    val scrollAxisSlopPx: Float = 16f,
 )
 
 /**
@@ -44,7 +47,7 @@ data class GestureConfig(
  *  - 1-finger down→up within slop + timeout → LeftClick
  *  - 1-finger move beyond slop → Move deltas (no click on release)
  *  - 2-finger down→up (little movement) → RightClick
- *  - 2-finger move → Scroll deltas
+ *  - 2-finger move → Scroll deltas, locked to the axis (horizontal or vertical) the gesture starts on
  *  - a down arriving within doubleTapWindow of a tap, then moving → DragStart/DragMove/DragEnd
  *  - 3-finger down→up (little movement) → ToggleScrollMode
  *
@@ -68,6 +71,9 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
     private var dragArmed = false
     private var dragging = false
     private var lastTapUpTime = NO_TAP
+    private var scrollAxis = ScrollAxis.NONE
+    private var pendingScrollX = 0f
+    private var pendingScrollY = 0f
 
     fun onFrame(frame: PadFrame): List<GestureAction> {
         val out = mutableListOf<GestureAction>()
@@ -107,7 +113,7 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
         if (hypot(frame.x - downX, frame.y - downY) > config.tapSlopPx) moved = true
 
         when {
-            twoFinger || frame.pointerCount >= 2 -> out += GestureAction.Scroll(dx, dy)
+            twoFinger || frame.pointerCount >= 2 -> scroll(dx, dy, out)
             dragArmed || dragging -> {
                 if (!dragging) {
                     out += GestureAction.DragStart
@@ -116,7 +122,25 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
                 }
                 out += GestureAction.DragMove(dx, dy)
             }
-            moved -> out += if (scrollMode) GestureAction.Scroll(dx, dy) else GestureAction.Move(dx, dy)
+            moved -> if (scrollMode) scroll(dx, dy, out) else out += GestureAction.Move(dx, dy)
+        }
+    }
+
+    /**
+     * Emits scroll deltas on one axis only. Nothing is emitted until the gesture has travelled
+     * [GestureConfig.scrollAxisSlopPx]; then it locks to the dominant axis and flushes what piled up.
+     * Without the lock, the sideways drift of a vertical scroll would nudge carousels (and vice versa).
+     */
+    private fun scroll(dx: Float, dy: Float, out: MutableList<GestureAction>) {
+        when (scrollAxis) {
+            ScrollAxis.X -> out += GestureAction.Scroll(dx, 0f)
+            ScrollAxis.Y -> out += GestureAction.Scroll(0f, dy)
+            ScrollAxis.NONE -> {
+                pendingScrollX += dx; pendingScrollY += dy
+                if (hypot(pendingScrollX, pendingScrollY) <= config.scrollAxisSlopPx) return
+                scrollAxis = if (abs(pendingScrollX) > abs(pendingScrollY)) ScrollAxis.X else ScrollAxis.Y
+                scroll(pendingScrollX, pendingScrollY, out)
+            }
         }
     }
 
@@ -145,7 +169,12 @@ class GestureRecognizer(private val config: GestureConfig = GestureConfig()) {
         dragArmed = false
         maxPointers = 0
         moved = false
+        scrollAxis = ScrollAxis.NONE
+        pendingScrollX = 0f
+        pendingScrollY = 0f
     }
+
+    private enum class ScrollAxis { NONE, X, Y }
 
     private companion object {
         const val NO_TAP = Long.MIN_VALUE
