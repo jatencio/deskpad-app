@@ -48,7 +48,8 @@ class AccessibilityInputSink(
     private var dragToY = 0f
 
     // Scroll state.
-    private var scrollAccum = 0f
+    private var scrollAccumX = 0f
+    private var scrollAccumY = 0f
     private var scrollInFlight = false
     private var scrollX = 0f
     private var scrollY = 0f
@@ -145,28 +146,33 @@ class AccessibilityInputSink(
     }
 
     /**
-     * Two-finger scroll → a swipe on the external display. Deltas accumulate; a swipe is dispatched
-     * only when none is in flight, and its completion drains whatever accumulated while it ran.
+     * Scroll → a swipe on the external display, vertical or horizontal (carousels, side-scrolling
+     * lists). Deltas accumulate per axis; a swipe is dispatched only when none is in flight, and its
+     * completion drains whatever accumulated while it ran. The recognizer locks each gesture to one
+     * axis, so a swipe is effectively straight.
      */
     override fun scroll(displayId: Int, x: Float, y: Float, hScroll: Float, vScroll: Float) {
         scrollDisplayId = displayId
         scrollX = x; scrollY = y
-        scrollAccum += vScroll
+        scrollAccumX += hScroll
+        scrollAccumY += vScroll
         dispatchScrollIfIdle()
     }
 
     private fun dispatchScrollIfIdle() {
         if (scrollInFlight) return
-        if (abs(scrollAccum) < MIN_SCROLL) return
+        if (abs(scrollAccumX) < MIN_SCROLL && abs(scrollAccumY) < MIN_SCROLL) return
         val displayId = scrollDisplayId
         if (displayId == INVALID) return
 
-        val dy = scrollAccum.coerceIn(-MAX_SWIPE, MAX_SWIPE)
-        scrollAccum -= dy
-        val cx = clampX(scrollX)
-        val y1 = clampY(scrollY - dy / 2f)
-        val y2 = clampY(scrollY + dy / 2f)
-        val path = Path().apply { moveTo(cx, y1); lineTo(cx, y2) }
+        val dx = scrollAccumX.coerceIn(-MAX_SWIPE, MAX_SWIPE)
+        val dy = scrollAccumY.coerceIn(-MAX_SWIPE, MAX_SWIPE)
+        scrollAccumX -= dx
+        scrollAccumY -= dy
+        val path = Path().apply {
+            moveTo(clampX(scrollX - dx / 2f), clampY(scrollY - dy / 2f))
+            lineTo(clampX(scrollX + dx / 2f), clampY(scrollY + dy / 2f))
+        }
         val gesture = GestureDescription.Builder()
             .addStroke(StrokeDescription(path, 0, SCROLL_MS))
             .setDisplayId(displayId)
