@@ -32,7 +32,7 @@ import com.example.deskpad.core.PadFrame
  */
 class DeskPadA11yService : AccessibilityService() {
 
-    data class State(val external: DisplayInfo?, val locked: Boolean)
+    data class State(val external: DisplayInfo?, val locked: Boolean, val scrollMode: Boolean)
 
     var onState: ((State) -> Unit)? = null
         set(value) { field = value; value?.invoke(currentState()) }
@@ -88,6 +88,10 @@ class DeskPadA11yService : AccessibilityService() {
         val displayId = targetDisplayId
         if (displayId == INVALID) return
         for (action in gestures.onFrame(frame)) {
+            if (action == com.example.deskpad.core.GestureAction.ToggleScrollMode) {
+                if (!lock.isLocked) setScrollMode(!gestures.scrollMode)
+                continue
+            }
             // Remember where the user clicked on the desktop — that's the text field to type into,
             // since it is never truly input-focused while this app is foreground.
             if (action == com.example.deskpad.core.GestureAction.LeftClick) {
@@ -105,6 +109,15 @@ class DeskPadA11yService : AccessibilityService() {
     }
 
     val isLocked: Boolean get() = lock.isLocked
+
+    /** One-finger slides scroll at the cursor instead of moving it; taps still click there. */
+    fun setScrollMode(on: Boolean) {
+        gestures.scrollMode = on
+        overlay.setScrollMode(on)
+        notifyState()
+    }
+
+    val isScrollMode: Boolean get() = gestures.scrollMode
 
     // ---- keyboard (accessibility edits on the focused desktop field) ----
     //
@@ -323,7 +336,8 @@ class DeskPadA11yService : AccessibilityService() {
             }
         )
 
-    private fun currentState() = State(if (targetDisplayId == INVALID) null else resolveExternal(), lock.isLocked)
+    private fun currentState() =
+        State(if (targetDisplayId == INVALID) null else resolveExternal(), lock.isLocked, gestures.scrollMode)
 
     private fun notifyState() {
         val s = currentState()

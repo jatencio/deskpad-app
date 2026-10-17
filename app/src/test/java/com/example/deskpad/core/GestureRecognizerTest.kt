@@ -69,4 +69,52 @@ class GestureRecognizerTest {
         assertTrue(out.any { it is GestureAction.DragMove })
         assertTrue(out.contains(GestureAction.DragEnd))
     }
+
+    @Test fun threeFingerTapTogglesScrollMode() {
+        val out = feed(
+            GestureRecognizer(),
+            PadFrame(PadPhase.DOWN, 1, 100f, 100f, 0),
+            PadFrame(PadPhase.DOWN, 2, 100f, 100f, 10),
+            PadFrame(PadPhase.DOWN, 3, 100f, 100f, 20),
+            PadFrame(PadPhase.UP, 3, 101f, 101f, 80),
+        )
+        assertEquals(listOf(GestureAction.ToggleScrollMode), out)
+    }
+
+    @Test fun scrollModeOneFingerSlideScrollsInsteadOfMoving() {
+        val r = GestureRecognizer().apply { scrollMode = true }
+        val out = feed(
+            r,
+            PadFrame(PadPhase.DOWN, 1, 100f, 100f, 0),
+            PadFrame(PadPhase.MOVE, 1, 100f, 140f, 16),
+            PadFrame(PadPhase.MOVE, 1, 100f, 170f, 32),
+            PadFrame(PadPhase.UP, 1, 100f, 170f, 48),
+        )
+        assertTrue(out.isNotEmpty())
+        assertTrue(out.all { it is GestureAction.Scroll })
+    }
+
+    @Test fun scrollModeTapStillClicks() {
+        val r = GestureRecognizer().apply { scrollMode = true }
+        val out = feed(
+            r,
+            PadFrame(PadPhase.DOWN, 1, 100f, 100f, 0),
+            PadFrame(PadPhase.UP, 1, 101f, 100f, 80),
+        )
+        assertEquals(listOf(GestureAction.LeftClick), out)
+    }
+
+    @Test fun scrollModeTapThenSlideScrollsRatherThanDrags() {
+        val r = GestureRecognizer().apply { scrollMode = true }
+        val out = feed(
+            r,
+            PadFrame(PadPhase.DOWN, 1, 100f, 100f, 0),
+            PadFrame(PadPhase.UP, 1, 100f, 100f, 60),
+            PadFrame(PadPhase.DOWN, 1, 100f, 100f, 120),
+            PadFrame(PadPhase.MOVE, 1, 100f, 150f, 140),
+            PadFrame(PadPhase.UP, 1, 100f, 150f, 180),
+        )
+        assertFalse(out.contains(GestureAction.DragStart))
+        assertTrue(out.any { it is GestureAction.Scroll })
+    }
 }

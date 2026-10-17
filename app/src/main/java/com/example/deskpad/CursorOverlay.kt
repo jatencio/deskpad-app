@@ -22,6 +22,8 @@ class CursorOverlay(private val serviceContext: Context) {
     private var view: CursorView? = null
     private var params: WindowManager.LayoutParams? = null
     private var attachedDisplayId = -1
+    private var dimmed = false
+    private var scrollMode = false
 
     fun attach(display: Display) = main.post {
         if (attachedDisplayId == display.displayId && view != null) return@post
@@ -29,7 +31,7 @@ class CursorOverlay(private val serviceContext: Context) {
         try {
             val ctx = serviceContext.createDisplayContext(display)
             val wm = ctx.getSystemService(WindowManager::class.java)
-            val v = CursorView(ctx)
+            val v = CursorView(ctx).apply { setDimmed(dimmed); setScrollMode(scrollMode) }
             val p = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -63,7 +65,10 @@ class CursorOverlay(private val serviceContext: Context) {
         runCatching { wm.updateViewLayout(v, p) }
     }
 
-    fun setDimmed(dimmed: Boolean) = main.post { view?.setDimmed(dimmed) }
+    // Remembered so a re-attached view (display change) keeps the same look.
+    fun setDimmed(dimmed: Boolean) = main.post { this.dimmed = dimmed; view?.setDimmed(dimmed) }
+
+    fun setScrollMode(on: Boolean) = main.post { scrollMode = on; view?.setScrollMode(on) }
 
     fun detach() = main.post { detachNow() }
 
